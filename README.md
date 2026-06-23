@@ -8,8 +8,7 @@ The built `.sif` image is intentionally not stored in Git.
 ## Contents
 
 - `rocky10-plasma.def` - Apptainer definition for the Rocky 10 Plasma image.
-- `scripts/build.sh` - local build helper.
-- `scripts/install.sh` - install a built image into the live Selkies image path.
+- `Makefile` - local build helper.
 
 Open OnDemand app files are intentionally kept out of this repository. They
 belong in a separate OOD application repository.
@@ -23,16 +22,17 @@ sudo apptainer build --force rocky10-plasma.sif rocky10-plasma.def
 or:
 
 ```bash
-./scripts/build.sh
+make build
 ```
 
-## Install
+## Publish
 
-```bash
-sudo ./scripts/install.sh rocky10-plasma.sif /opt/selkies-ood/containers/rocky10-gnome.sif
-```
+Publish the built `.sif` with your site's normal artifact release process. In
+production HPC environments this will commonly be a CVMFS publication workflow,
+not a direct copy into a local `/opt` path.
 
-The install helper backs up the previous live image before replacing it.
+This repository intentionally does not encode a site-specific CVMFS repository,
+transaction command, or destination path.
 
 ## Runtime Contract
 

@@ -1,0 +1,157 @@
+Bootstrap: docker
+From: rockylinux/rockylinux:10
+
+%labels
+    Author Koios Selkies OOD
+    Description Rocky 10 KDE Plasma nested Wayland desktop for Selkies PixelFlux
+
+%post
+    set -eux
+    dnf -y install epel-release || true
+    /usr/bin/crb enable || true
+    dnf -y install \
+        bash-completion \
+        dbus-daemon \
+        dolphin \
+        firefox \
+        hostname \
+        iproute \
+        kscreen \
+        kscreenlocker \
+        kwin-wayland \
+        libxkbcommon \
+        mesa-dri-drivers \
+        mesa-libEGL \
+        mesa-libgbm \
+        plasma-desktop \
+        plasma-systemmonitor \
+        plasma-workspace \
+        procps-ng \
+        which \
+        weston \
+        xdg-desktop-portal-kde \
+        xdg-user-dirs \
+        xkeyboard-config \
+        xorg-x11-server-Xwayland
+
+    setcap -r /usr/bin/kwin_wayland 2>/dev/null || true
+    dnf clean all
+
+    mkdir -p /opt/koios/bin
+    cat > /opt/koios/bin/start-pixelflux-kde <<'SCRIPT_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must point at the host PixelFlux runtime dir}"
+: "${WAYLAND_DISPLAY:?WAYLAND_DISPLAY must point at the host PixelFlux Wayland socket}"
+
+width="${SELKIES_NESTED_WIDTH:-1500}"
+height="${SELKIES_NESTED_HEIGHT:-850}"
+parent_wayland="${WAYLAND_DISPLAY}"
+kde_socket="${SELKIES_NESTED_SOCKET:-rocky10-kde}"
+log="${SELKIES_NESTED_LOG:-/tmp/rocky10-kde.log}"
+session_script="${XDG_RUNTIME_DIR}/start-plasma-inner-${kde_socket}.sh"
+
+export QT_QPA_PLATFORM=wayland
+export GDK_BACKEND=wayland
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=KDE
+export XDG_SESSION_DESKTOP=KDE
+export KDE_FULL_SESSION=true
+export KDE_SESSION_VERSION=6
+export KWIN_COMPOSE=Q
+export LIBGL_ALWAYS_SOFTWARE=1
+export QT_QUICK_BACKEND=software
+unset DISPLAY
+
+{
+  echo "Koios Rocky 10 KDE session"
+  echo "parent WAYLAND_DISPLAY=${parent_wayland}"
+  echo "kde socket=${kde_socket}"
+  echo "requested size=${width}x${height}"
+  echo
+} | tee "${log}"
+
+cat > "${session_script}" <<'INNER_EOF'
+#!/usr/bin/env bash
+set -u
+
+export QT_QPA_PLATFORM=wayland
+export GDK_BACKEND=wayland
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=KDE
+export XDG_SESSION_DESKTOP=KDE
+export KDE_FULL_SESSION=true
+export KDE_SESSION_VERSION=6
+export KWIN_COMPOSE=Q
+export LIBGL_ALWAYS_SOFTWARE=1
+export QT_QUICK_BACKEND=software
+
+log="${SELKIES_NESTED_LOG:-/tmp/rocky10-kde.log}"
+export SELKIES_NESTED_LOG="${log}"
+
+dbus-run-session -- bash -s <<'DBUS_EOF' >>"${log}" 2>&1
+set -u
+
+launch_bg() {
+  "$@" &
+}
+
+if command -v kded6 >/dev/null 2>&1; then
+  launch_bg kded6
+fi
+
+if command -v plasmashell >/dev/null 2>&1; then
+  plasmashell --no-respawn &
+  plasma_pid="$!"
+  sleep 2
+  if ! kill -0 "${plasma_pid}" 2>/dev/null; then
+    echo "plasmashell exited during startup"
+    wait "${plasma_pid}" || true
+    unset plasma_pid
+  fi
+fi
+
+sleep 1
+
+if command -v weston-terminal >/dev/null 2>&1; then
+  launch_bg weston-terminal --shell=/bin/bash
+fi
+
+if command -v dolphin >/dev/null 2>&1; then
+  launch_bg dolphin
+fi
+
+while true; do
+  if [ -n "${plasma_pid:-}" ] && ! kill -0 "${plasma_pid}" 2>/dev/null; then
+    echo "plasmashell exited after startup"
+    wait "${plasma_pid}" || true
+    unset plasma_pid
+  fi
+  sleep 3600
+done
+DBUS_EOF
+INNER_EOF
+chmod 700 "${session_script}"
+
+kwin_wayland \
+  --wayland-display="${parent_wayland}" \
+  --socket="${kde_socket}" \
+  --width "${width}" \
+  --height "${height}" \
+  --xwayland \
+  --no-lockscreen \
+  --no-global-shortcuts \
+  --exit-with-session "${session_script}" \
+  2>&1 | tee -a "${log}"
+SCRIPT_EOF
+    chmod 755 /opt/koios/bin/start-pixelflux-kde
+
+%environment
+    export GDK_BACKEND=wayland
+    export QT_QPA_PLATFORM=wayland
+    export XDG_SESSION_TYPE=wayland
+    export PATH=/opt/koios/bin:$PATH
+
+%runscript
+    exec /opt/koios/bin/start-pixelflux-kde "$@"

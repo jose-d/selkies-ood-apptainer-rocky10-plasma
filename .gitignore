@@ -1,0 +1,8 @@
+*.sif
+*.sif.new
+*.sqsh
+*.img
+*.log
+build/
+dist/
+tmp/

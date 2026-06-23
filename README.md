@@ -42,6 +42,10 @@ The image includes Selkies under `/opt/selkies-ood`:
 - `/opt/selkies-ood/web`
 - `/opt/selkies/bin/start-selkies`
 
+The image also includes `wl-paste` and `wl-copy` from `wl-clipboard` so
+Selkies clipboard synchronization can read and write the Wayland clipboard
+without host-side binary binds.
+
 The image also includes a portable software H.264 path under
 `/opt/selkies-codecs`:
 

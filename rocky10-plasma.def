@@ -58,6 +58,7 @@ From: rockylinux/rockylinux:10
         python3-pip \
         which \
         weston \
+        wl-clipboard \
         xdg-desktop-portal-kde \
         xdg-user-dirs \
         xkeyboard-config \

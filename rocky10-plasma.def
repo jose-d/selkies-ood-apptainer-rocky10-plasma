@@ -57,7 +57,6 @@ From: rockylinux/rockylinux:10
         python3-devel \
         python3-pip \
         which \
-        weston \
         wl-clipboard \
         xdg-desktop-portal-kde \
         xdg-user-dirs \
@@ -233,10 +232,6 @@ if command -v plasmashell >/dev/null 2>&1; then
 fi
 
 sleep 1
-
-if command -v weston-terminal >/dev/null 2>&1; then
-  launch_bg weston-terminal --shell=/bin/bash
-fi
 
 if command -v dolphin >/dev/null 2>&1; then
   launch_bg dolphin

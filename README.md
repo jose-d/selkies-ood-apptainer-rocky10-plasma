@@ -82,7 +82,7 @@ The runscript starts:
 2. a session bus with `dbus-run-session`
 3. `kded6`
 4. `plasmashell --no-respawn`
-5. `weston-terminal` and `dolphin`
+5. `dolphin`
 
 The `start-selkies` helper starts the embedded Selkies server and defaults
 `SELKIES_WEB_ROOT` to `/opt/selkies-ood/web`.

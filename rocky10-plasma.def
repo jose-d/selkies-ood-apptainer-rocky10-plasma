@@ -7,37 +7,156 @@ From: rockylinux/rockylinux:10
 
 %post
     set -eux
+    SELKIES_REF="5686f6c4d20ed63a27e253bac00fb89ef99828c8"
+    X264_REF="b35605ace3ddf7c1a5d67a2eb553f034aef41d55"
+    GSTREAMER_REF="0c88a1af6b5ab19f9d2bc8dc725fec90b7fe5494"
+    CODEC_PREFIX="/opt/selkies-codecs"
+
     dnf -y install epel-release || true
     /usr/bin/crb enable || true
     dnf -y install \
         bash-completion \
+        ca-certificates \
         dbus-daemon \
+        diffutils \
         dolphin \
         firefox \
+        gcc \
+        gcc-c++ \
+        git \
+        glib2-devel \
+        gstreamer1 \
+        gstreamer1-devel \
+        gstreamer1-plugins-bad-free \
+        gstreamer1-plugins-base \
+        gstreamer1-plugins-base-devel \
+        gstreamer1-plugins-good \
+        gstreamer1-plugins-ugly-free \
         hostname \
         iproute \
         kscreen \
         kscreenlocker \
         kwin-wayland \
         libxkbcommon \
+        libxkbcommon-devel \
+        make \
         mesa-dri-drivers \
         mesa-libEGL \
         mesa-libgbm \
+        meson \
+        nasm \
+        ninja-build \
+        nodejs \
+        npm \
+        pkgconf-pkg-config \
         plasma-desktop \
         plasma-systemmonitor \
         plasma-workspace \
         procps-ng \
+        python3 \
+        python3-devel \
+        python3-pip \
         which \
         weston \
         xdg-desktop-portal-kde \
         xdg-user-dirs \
         xkeyboard-config \
+        yasm \
         xorg-x11-server-Xwayland
 
     setcap -r /usr/bin/kwin_wayland 2>/dev/null || true
+
+    export CFLAGS="-O2 -pipe -mtune=generic"
+    export CXXFLAGS="-O2 -pipe -mtune=generic"
+
+    rm -rf /tmp/x264-src /tmp/gstreamer-src /tmp/selkies-src
+
+    git clone https://code.videolan.org/videolan/x264.git /tmp/x264-src
+    cd /tmp/x264-src
+    git checkout "${X264_REF}"
+    ./configure \
+        --prefix="${CODEC_PREFIX}" \
+        --libdir="${CODEC_PREFIX}/lib64" \
+        --enable-shared \
+        --enable-pic \
+        --disable-cli
+    make -j"$(nproc)"
+    make install
+
+    git clone https://gitlab.freedesktop.org/gstreamer/gstreamer.git /tmp/gstreamer-src
+    cd /tmp/gstreamer-src
+    git checkout "${GSTREAMER_REF}"
+    cd subprojects/gst-plugins-ugly
+    export PKG_CONFIG_PATH="${CODEC_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
+    meson setup builddir \
+        --prefix="${CODEC_PREFIX}" \
+        --libdir=lib64 \
+        --buildtype=release \
+        -Dauto_features=disabled \
+        -Dgpl=enabled \
+        -Dx264=enabled \
+        -Dtests=disabled
+    ninja -C builddir
+    ninja -C builddir install
+
+    export LD_LIBRARY_PATH="${CODEC_PREFIX}/lib64:${LD_LIBRARY_PATH:-}"
+    export GST_PLUGIN_PATH="${CODEC_PREFIX}/lib64/gstreamer-1.0:${GST_PLUGIN_PATH:-}"
+    gst-inspect-1.0 x264enc
+
+    git clone https://github.com/selkies-project/selkies.git /tmp/selkies-src
+    cd /tmp/selkies-src
+    git checkout "${SELKIES_REF}"
+
+    python3 -m venv /opt/selkies-ood/venv
+    /opt/selkies-ood/venv/bin/pip install --upgrade pip setuptools wheel
+    /opt/selkies-ood/venv/bin/pip install /tmp/selkies-src
+
+    cd /tmp/selkies-src/addons/selkies-web-core
+    npm install
+    npm run build
+
+    cd /tmp/selkies-src/addons/selkies-dashboard
+    cp ../selkies-web-core/dist/selkies-core.js src/
+    npm install
+    export SELKIES_INJECT=1
+    export SELKIES_MODE=websockets
+    export SELKIES_UPLOAD_DIR='~/Desktop'
+    npm run build
+    mkdir -p dist/src dist/assets /opt/selkies-ood/web
+    cp ../selkies-web-core/dist/selkies-core.js dist/src/
+    cp ../selkies-web-core/dist/clipboard-worker* dist/assets/
+    cp ../universal-touch-gamepad/universalTouchGamepad.js dist/src/
+    cp -r ../selkies-web-core/dist/jsdb dist/ || true
+    cp -a dist/. /opt/selkies-ood/web/
+
+    cat > /opt/selkies-ood/web/manifest.json <<'MANIFEST_EOF'
+{
+  "name": "Selkies",
+  "short_name": "Selkies",
+  "manifest_version": 2,
+  "version": "1.0.0",
+  "display": "fullscreen",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "start_url": "/"
+}
+MANIFEST_EOF
+
+    rm -rf /tmp/selkies-src /tmp/x264-src /tmp/gstreamer-src /root/.cache /root/.npm
     dnf clean all
 
     mkdir -p /opt/selkies/bin
+    cat > /opt/selkies/bin/start-selkies <<'SCRIPT_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+export SELKIES_WEB_ROOT="${SELKIES_WEB_ROOT:-/opt/selkies-ood/web}"
+export LD_LIBRARY_PATH="/opt/selkies-codecs/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+export GST_PLUGIN_PATH="/opt/selkies-codecs/lib64/gstreamer-1.0${GST_PLUGIN_PATH:+:${GST_PLUGIN_PATH}}"
+exec /opt/selkies-ood/venv/bin/selkies "$@"
+SCRIPT_EOF
+    chmod 755 /opt/selkies/bin/start-selkies
+
     cat > /opt/selkies/bin/start-pixelflux-kde <<'SCRIPT_EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -148,9 +267,14 @@ SCRIPT_EOF
     chmod 755 /opt/selkies/bin/start-pixelflux-kde
 
 %environment
+    export SELKIES_CODEC_PREFIX=/opt/selkies-codecs
+    export SELKIES_WEB_ROOT=/opt/selkies-ood/web
     export GDK_BACKEND=wayland
     export QT_QPA_PLATFORM=wayland
     export XDG_SESSION_TYPE=wayland
+    export LD_LIBRARY_PATH=/opt/selkies-codecs/lib64:$LD_LIBRARY_PATH
+    export GST_PLUGIN_PATH=/opt/selkies-codecs/lib64/gstreamer-1.0:$GST_PLUGIN_PATH
+    export PATH=/opt/selkies-ood/venv/bin:$PATH
     export PATH=/opt/selkies/bin:$PATH
 
 %runscript

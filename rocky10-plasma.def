@@ -135,7 +135,7 @@ if old not in text:
     raise SystemExit(f"Could not find hardcoded Selkies Wayland keymap block in {path}")
 text = text.replace(old, new, 1)
 text = text.replace(
-    'logger_webrtc_input.warning(f"Could not force \\'us\\' layout, using default: {e}")',
+    "logger_webrtc_input.warning(f\"Could not force 'us' layout, using default: {e}\")",
     'logger_webrtc_input.warning(f"Could not build configured XKB layout, using default: {e}")',
     1,
 )

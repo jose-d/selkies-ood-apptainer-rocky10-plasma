@@ -1,7 +1,7 @@
 # Rocky 10 Plasma Apptainer Desktop for Selkies
 
 This repository contains the Apptainer image definition and small build helpers
-for the Rocky 10 KDE Plasma desktop used with Selkies/PixelFlux on Koios.
+for a Rocky 10 KDE Plasma desktop used with Selkies/PixelFlux.
 
 The built `.sif` image is intentionally not stored in Git.
 

@@ -2,7 +2,7 @@ Bootstrap: docker
 From: rockylinux/rockylinux:10
 
 %labels
-    Author Koios Selkies OOD
+    Author Selkies OOD Apptainer
     Description Rocky 10 KDE Plasma nested Wayland desktop for Selkies PixelFlux
 
 %post
@@ -37,8 +37,8 @@ From: rockylinux/rockylinux:10
     setcap -r /usr/bin/kwin_wayland 2>/dev/null || true
     dnf clean all
 
-    mkdir -p /opt/koios/bin
-    cat > /opt/koios/bin/start-pixelflux-kde <<'SCRIPT_EOF'
+    mkdir -p /opt/selkies/bin
+    cat > /opt/selkies/bin/start-pixelflux-kde <<'SCRIPT_EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -65,7 +65,7 @@ export QT_QUICK_BACKEND=software
 unset DISPLAY
 
 {
-  echo "Koios Rocky 10 KDE session"
+  echo "Rocky 10 KDE session"
   echo "parent WAYLAND_DISPLAY=${parent_wayland}"
   echo "kde socket=${kde_socket}"
   echo "requested size=${width}x${height}"
@@ -145,13 +145,13 @@ kwin_wayland \
   --exit-with-session "${session_script}" \
   2>&1 | tee -a "${log}"
 SCRIPT_EOF
-    chmod 755 /opt/koios/bin/start-pixelflux-kde
+    chmod 755 /opt/selkies/bin/start-pixelflux-kde
 
 %environment
     export GDK_BACKEND=wayland
     export QT_QPA_PLATFORM=wayland
     export XDG_SESSION_TYPE=wayland
-    export PATH=/opt/koios/bin:$PATH
+    export PATH=/opt/selkies/bin:$PATH
 
 %runscript
-    exec /opt/koios/bin/start-pixelflux-kde "$@"
+    exec /opt/selkies/bin/start-pixelflux-kde "$@"

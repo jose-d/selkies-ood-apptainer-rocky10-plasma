@@ -46,6 +46,11 @@ The image also includes `wl-paste` and `wl-copy` from `wl-clipboard` so
 Selkies clipboard synchronization can read and write the Wayland clipboard
 without host-side binary binds.
 
+The image patches Selkies' Wayland input handler to honor the standard
+`XKB_DEFAULT_LAYOUT`, `XKB_DEFAULT_VARIANT`, and `XKB_DEFAULT_OPTIONS`
+environment variables instead of forcing a US keymap. This is required for
+non-US layouts such as Czech.
+
 The image also includes a portable software H.264 path under
 `/opt/selkies-codecs`:
 
@@ -75,6 +80,10 @@ Optional environment:
 - `SELKIES_NESTED_WIDTH` - nested desktop width, default `1500`.
 - `SELKIES_NESTED_HEIGHT` - nested desktop height, default `850`.
 - `SELKIES_NESTED_LOG` - KDE startup log path, default `/tmp/rocky10-kde.log`.
+- `XKB_DEFAULT_LAYOUT` - keyboard layout used by Selkies Wayland input, default
+  from Selkies fallback is `us`.
+- `XKB_DEFAULT_VARIANT` - optional keyboard layout variant.
+- `XKB_DEFAULT_OPTIONS` - optional keyboard layout options.
 
 The runscript starts:
 

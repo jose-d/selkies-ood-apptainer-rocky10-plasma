@@ -110,6 +110,45 @@ From: rockylinux/rockylinux:10
     python3 -m venv /opt/selkies-ood/venv
     /opt/selkies-ood/venv/bin/pip install --upgrade pip setuptools wheel
     /opt/selkies-ood/venv/bin/pip install /tmp/selkies-src
+    /opt/selkies-ood/venv/bin/python - <<'PY_EOF'
+from pathlib import Path
+import selkies.input_handler
+
+path = Path(selkies.input_handler.__file__).resolve()
+text = path.read_text()
+old = '''            self.xkb_keymap = self.xkb_ctx.keymap_new_from_names(
+                rules="evdev", model="pc105", layout="us", variant="", options=""
+            )
+'''
+new = '''            import os
+            xkb_layout = os.environ.get("XKB_DEFAULT_LAYOUT", "us")
+            xkb_variant = os.environ.get("XKB_DEFAULT_VARIANT", "")
+            xkb_options = os.environ.get("XKB_DEFAULT_OPTIONS", "")
+            self.xkb_keymap = self.xkb_ctx.keymap_new_from_names(
+                rules="evdev", model="pc105", layout=xkb_layout, variant=xkb_variant, options=xkb_options
+            )
+            logger_webrtc_input.info(
+                f"Built Wayland keymap from XKB layout={xkb_layout!r}, variant={xkb_variant!r}, options={xkb_options!r}."
+            )
+'''
+if old not in text:
+    raise SystemExit(f"Could not find hardcoded Selkies Wayland keymap block in {path}")
+text = text.replace(old, new, 1)
+text = text.replace(
+    'logger_webrtc_input.warning(f"Could not force \\'us\\' layout, using default: {e}")',
+    'logger_webrtc_input.warning(f"Could not build configured XKB layout, using default: {e}")',
+    1,
+)
+path.write_text(text)
+print(f"Patched Selkies Wayland keymap layout handling in {path}")
+PY_EOF
+    /opt/selkies-ood/venv/bin/python - <<'PY_EOF'
+from pathlib import Path
+import py_compile
+import selkies.input_handler
+
+py_compile.compile(str(Path(selkies.input_handler.__file__).resolve()), doraise=True)
+PY_EOF
 
     cd /tmp/selkies-src/addons/selkies-web-core
     npm install

@@ -72,11 +72,6 @@ The final Selkies image builds on the base image and adds Selkies under
 - `/opt/selkies-ood/venv/bin/selkies`
 - `/opt/selkies-ood/web`
 
-The final image patches Selkies' Wayland input handler to honor the standard
-`XKB_DEFAULT_LAYOUT`, `XKB_DEFAULT_VARIANT`, and `XKB_DEFAULT_OPTIONS`
-environment variables instead of forcing a US keymap. This is required for
-non-US layouts such as Czech.
-
 This codec layer is built without `-march=native`; it is intended as a generic
 portable baseline for CVMFS-style distribution, not as a per-node optimized
 build.
@@ -97,11 +92,6 @@ Optional environment:
 - `SELKIES_NESTED_WIDTH` - nested desktop width, default `1500`.
 - `SELKIES_NESTED_HEIGHT` - nested desktop height, default `850`.
 - `SELKIES_NESTED_LOG` - KDE startup log path, default `/tmp/rocky10-kde.log`.
-- `XKB_DEFAULT_LAYOUT` - keyboard layout used by Selkies Wayland input, default
-  from Selkies fallback is `us`.
-- `XKB_DEFAULT_VARIANT` - optional keyboard layout variant.
-- `XKB_DEFAULT_OPTIONS` - optional keyboard layout options.
-
 The app-owned KDE launcher starts:
 
 1. nested `kwin_wayland` on the outer PixelFlux Wayland display

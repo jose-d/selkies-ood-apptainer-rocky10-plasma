@@ -1,111 +1,20 @@
-Bootstrap: docker
-From: rockylinux/rockylinux:10
+Bootstrap: localimage
+From: rocky10-plasma-base.sif
 
 %labels
     Author Selkies OOD Apptainer
-    Description Rocky 10 KDE Plasma nested Wayland desktop for Selkies PixelFlux
+    Description Rocky 10 KDE Plasma Selkies development/runtime layer for PixelFlux
+    Layer selkies
 
 %post
     set -eux
     SELKIES_REF="5686f6c4d20ed63a27e253bac00fb89ef99828c8"
-    X264_REF="b35605ace3ddf7c1a5d67a2eb553f034aef41d55"
-    GSTREAMER_REF="0c88a1af6b5ab19f9d2bc8dc725fec90b7fe5494"
-    CODEC_PREFIX="/opt/selkies-codecs"
 
-    dnf -y install epel-release || true
-    /usr/bin/crb enable || true
-    dnf -y install \
-        bash-completion \
-        ca-certificates \
-        dbus-daemon \
-        diffutils \
-        dolphin \
-        firefox \
-        gcc \
-        gcc-c++ \
-        git \
-        glib2-devel \
-        gstreamer1 \
-        gstreamer1-devel \
-        gstreamer1-plugins-bad-free \
-        gstreamer1-plugins-base \
-        gstreamer1-plugins-base-devel \
-        gstreamer1-plugins-good \
-        gstreamer1-plugins-ugly-free \
-        hostname \
-        iproute \
-        kscreen \
-        kscreenlocker \
-        kwin-wayland \
-        libxkbcommon \
-        libxkbcommon-devel \
-        make \
-        mesa-dri-drivers \
-        mesa-libEGL \
-        mesa-libgbm \
-        meson \
-        nasm \
-        ninja-build \
-        nodejs \
-        npm \
-        pkgconf-pkg-config \
-        plasma-desktop \
-        plasma-systemmonitor \
-        plasma-workspace \
-        procps-ng \
-        python3 \
-        python3-devel \
-        python3-pip \
-        which \
-        wl-clipboard \
-        xdg-desktop-portal-kde \
-        xdg-user-dirs \
-        xkeyboard-config \
-        yasm \
-        xorg-x11-server-Xwayland
-
-    setcap -r /usr/bin/kwin_wayland 2>/dev/null || true
-
-    export CFLAGS="-O2 -pipe -mtune=generic"
-    export CXXFLAGS="-O2 -pipe -mtune=generic"
-
-    rm -rf /tmp/x264-src /tmp/gstreamer-src /tmp/selkies-src
-
-    git clone https://code.videolan.org/videolan/x264.git /tmp/x264-src
-    cd /tmp/x264-src
-    git checkout "${X264_REF}"
-    ./configure \
-        --prefix="${CODEC_PREFIX}" \
-        --libdir="${CODEC_PREFIX}/lib64" \
-        --enable-shared \
-        --enable-pic \
-        --disable-cli
-    make -j"$(nproc)"
-    make install
-
-    git clone https://gitlab.freedesktop.org/gstreamer/gstreamer.git /tmp/gstreamer-src
-    cd /tmp/gstreamer-src
-    git checkout "${GSTREAMER_REF}"
-    cd subprojects/gst-plugins-ugly
-    export PKG_CONFIG_PATH="${CODEC_PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
-    meson setup builddir \
-        --prefix="${CODEC_PREFIX}" \
-        --libdir=lib64 \
-        --buildtype=release \
-        -Dauto_features=disabled \
-        -Dgpl=enabled \
-        -Dx264=enabled \
-        -Dtests=disabled
-    ninja -C builddir
-    ninja -C builddir install
-
-    export LD_LIBRARY_PATH="${CODEC_PREFIX}/lib64:${LD_LIBRARY_PATH:-}"
-    export GST_PLUGIN_PATH="${CODEC_PREFIX}/lib64/gstreamer-1.0:${GST_PLUGIN_PATH:-}"
-    gst-inspect-1.0 x264enc
+    rm -rf /tmp/selkies-src
 
     git clone https://github.com/selkies-project/selkies.git /tmp/selkies-src
     cd /tmp/selkies-src
-    git checkout "${SELKIES_REF}"
+    git checkout -f "${SELKIES_REF}"
 
     python3 -m venv /opt/selkies-ood/venv
     /opt/selkies-ood/venv/bin/pip install --upgrade pip setuptools wheel
@@ -181,125 +90,8 @@ PY_EOF
 }
 MANIFEST_EOF
 
-    rm -rf /tmp/selkies-src /tmp/x264-src /tmp/gstreamer-src /root/.cache /root/.npm
+    rm -rf /tmp/selkies-src /root/.cache /root/.npm
     dnf clean all
-
-    mkdir -p /opt/selkies/bin
-    cat > /opt/selkies/bin/start-selkies <<'SCRIPT_EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-export SELKIES_WEB_ROOT="${SELKIES_WEB_ROOT:-/opt/selkies-ood/web}"
-export LD_LIBRARY_PATH="/opt/selkies-codecs/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-export GST_PLUGIN_PATH="/opt/selkies-codecs/lib64/gstreamer-1.0${GST_PLUGIN_PATH:+:${GST_PLUGIN_PATH}}"
-exec /opt/selkies-ood/venv/bin/selkies "$@"
-SCRIPT_EOF
-    chmod 755 /opt/selkies/bin/start-selkies
-
-    cat > /opt/selkies/bin/start-pixelflux-kde <<'SCRIPT_EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-: "${XDG_RUNTIME_DIR:?XDG_RUNTIME_DIR must point at the host PixelFlux runtime dir}"
-: "${WAYLAND_DISPLAY:?WAYLAND_DISPLAY must point at the host PixelFlux Wayland socket}"
-
-width="${SELKIES_NESTED_WIDTH:-1500}"
-height="${SELKIES_NESTED_HEIGHT:-850}"
-parent_wayland="${WAYLAND_DISPLAY}"
-kde_socket="${SELKIES_NESTED_SOCKET:-rocky10-kde}"
-log="${SELKIES_NESTED_LOG:-/tmp/rocky10-kde.log}"
-session_script="${XDG_RUNTIME_DIR}/start-plasma-inner-${kde_socket}.sh"
-
-export QT_QPA_PLATFORM=wayland
-export GDK_BACKEND=wayland
-export XDG_SESSION_TYPE=wayland
-export XDG_CURRENT_DESKTOP=KDE
-export XDG_SESSION_DESKTOP=KDE
-export KDE_FULL_SESSION=true
-export KDE_SESSION_VERSION=6
-export KWIN_COMPOSE=Q
-export LIBGL_ALWAYS_SOFTWARE=1
-export QT_QUICK_BACKEND=software
-unset DISPLAY
-
-{
-  echo "Rocky 10 KDE session"
-  echo "parent WAYLAND_DISPLAY=${parent_wayland}"
-  echo "kde socket=${kde_socket}"
-  echo "requested size=${width}x${height}"
-  echo
-} | tee "${log}"
-
-cat > "${session_script}" <<'INNER_EOF'
-#!/usr/bin/env bash
-set -u
-
-export QT_QPA_PLATFORM=wayland
-export GDK_BACKEND=wayland
-export XDG_SESSION_TYPE=wayland
-export XDG_CURRENT_DESKTOP=KDE
-export XDG_SESSION_DESKTOP=KDE
-export KDE_FULL_SESSION=true
-export KDE_SESSION_VERSION=6
-export KWIN_COMPOSE=Q
-export LIBGL_ALWAYS_SOFTWARE=1
-export QT_QUICK_BACKEND=software
-
-log="${SELKIES_NESTED_LOG:-/tmp/rocky10-kde.log}"
-export SELKIES_NESTED_LOG="${log}"
-
-dbus-run-session -- bash -s <<'DBUS_EOF' >>"${log}" 2>&1
-set -u
-
-launch_bg() {
-  "$@" &
-}
-
-if command -v kded6 >/dev/null 2>&1; then
-  launch_bg kded6
-fi
-
-if command -v plasmashell >/dev/null 2>&1; then
-  plasmashell --no-respawn &
-  plasma_pid="$!"
-  sleep 2
-  if ! kill -0 "${plasma_pid}" 2>/dev/null; then
-    echo "plasmashell exited during startup"
-    wait "${plasma_pid}" || true
-    unset plasma_pid
-  fi
-fi
-
-sleep 1
-
-if command -v dolphin >/dev/null 2>&1; then
-  launch_bg dolphin
-fi
-
-while true; do
-  if [ -n "${plasma_pid:-}" ] && ! kill -0 "${plasma_pid}" 2>/dev/null; then
-    echo "plasmashell exited after startup"
-    wait "${plasma_pid}" || true
-    unset plasma_pid
-  fi
-  sleep 3600
-done
-DBUS_EOF
-INNER_EOF
-chmod 700 "${session_script}"
-
-kwin_wayland \
-  --wayland-display="${parent_wayland}" \
-  --socket="${kde_socket}" \
-  --width "${width}" \
-  --height "${height}" \
-  --xwayland \
-  --no-lockscreen \
-  --no-global-shortcuts \
-  --exit-with-session "${session_script}" \
-  2>&1 | tee -a "${log}"
-SCRIPT_EOF
-    chmod 755 /opt/selkies/bin/start-pixelflux-kde
 
 %environment
     export SELKIES_CODEC_PREFIX=/opt/selkies-codecs
@@ -310,7 +102,3 @@ SCRIPT_EOF
     export LD_LIBRARY_PATH=/opt/selkies-codecs/lib64:$LD_LIBRARY_PATH
     export GST_PLUGIN_PATH=/opt/selkies-codecs/lib64/gstreamer-1.0:$GST_PLUGIN_PATH
     export PATH=/opt/selkies-ood/venv/bin:$PATH
-    export PATH=/opt/selkies/bin:$PATH
-
-%runscript
-    exec /opt/selkies/bin/start-pixelflux-kde "$@"

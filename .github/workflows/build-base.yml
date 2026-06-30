@@ -1,0 +1,110 @@
+name: Build Rocky 10 Plasma Base SIF
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - base-*
+    paths:
+      - rocky10-plasma-base.def
+      - Makefile
+      - .github/workflows/build-base.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  BASE_IMAGE: rocky10-plasma-base.sif
+  GHCR_IMAGE: ghcr.io/jose-d/selkies-ood-apptainer-rocky10-plasma/rocky10-plasma-base
+
+jobs:
+  build-base:
+    name: Build and publish base SIF
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Apptainer
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y apptainer
+          apptainer --version
+
+      - name: Build base SIF
+        run: |
+          set -euxo pipefail
+          sudo make base
+          sudo chown "$(id -u):$(id -g)" "${BASE_IMAGE}"
+          test -s "${BASE_IMAGE}"
+
+      - name: Validate base image contract
+        run: |
+          set -euxo pipefail
+          apptainer exec "${BASE_IMAGE}" gst-inspect-1.0 x264enc
+          apptainer exec "${BASE_IMAGE}" test -f /opt/selkies-codecs/lib64/gstreamer-1.0/libgstx264.so
+          apptainer exec "${BASE_IMAGE}" test -x /usr/bin/kwin_wayland
+          apptainer exec "${BASE_IMAGE}" test ! -e /opt/selkies-ood/venv/bin/selkies
+          apptainer exec "${BASE_IMAGE}" test ! -e /opt/selkies/bin/start-selkies
+          apptainer exec "${BASE_IMAGE}" test ! -e /opt/selkies/bin/start-pixelflux-kde
+
+      - name: Compute publish tags
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::12}"
+          tags=("${short_sha}")
+
+          if [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "main" ]]; then
+            tags+=("latest")
+          fi
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == base-* ]]; then
+            tags+=("${GITHUB_REF_NAME}")
+          fi
+
+          {
+            echo "targets<<EOF"
+            for tag in "${tags[@]}"; do
+              echo "oras://${GHCR_IMAGE}:${tag}"
+            done
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Log in to GHCR
+        run: |
+          set -euo pipefail
+          printf '%s' "${GITHUB_TOKEN}" | apptainer registry login \
+            --username "${GITHUB_ACTOR}" \
+            --password-stdin \
+            oras://ghcr.io || \
+          printf '%s' "${GITHUB_TOKEN}" | apptainer registry login \
+            --username "${GITHUB_ACTOR}" \
+            --password-stdin \
+            docker://ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish base SIF to GHCR
+        run: |
+          set -euxo pipefail
+          while IFS= read -r target; do
+            test -n "${target}" || continue
+            apptainer push "${BASE_IMAGE}" "${target}"
+          done <<'TARGETS'
+          ${{ steps.meta.outputs.targets }}
+          TARGETS
+
+      - name: Upload base SIF for failed runs
+        if: ${{ failure() && hashFiles('rocky10-plasma-base.sif') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocky10-plasma-base-sif-debug
+          path: rocky10-plasma-base.sif
+          if-no-files-found: ignore

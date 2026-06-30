@@ -1,13 +1,16 @@
 # Rocky 10 Plasma Apptainer Desktop for Selkies
 
-This repository contains the Apptainer image definition and small build helpers
-for a self-contained Rocky 10 KDE Plasma desktop used with Selkies/PixelFlux.
+This repository contains Apptainer image definitions and small build helpers for
+a layered Rocky 10 KDE Plasma desktop used with Selkies/PixelFlux.
 
 The built `.sif` image is intentionally not stored in Git.
 
 ## Contents
 
-- `rocky10-plasma.def` - Apptainer definition for the Rocky 10 Plasma image.
+- `rocky10-plasma-base.def` - base Rocky 10 Plasma image with static OS,
+  desktop, codec, and build dependencies.
+- `rocky10-plasma.def` - Selkies development/runtime layer built from the base
+  image.
 - `Makefile` - local build helper.
 
 Open OnDemand app files are intentionally kept out of this repository. They
@@ -16,58 +19,72 @@ belong in a separate OOD application repository.
 ## Build
 
 ```bash
-sudo apptainer build --force rocky10-plasma.sif rocky10-plasma.def
-```
-
-or:
-
-```bash
 make build
 ```
 
+This builds both layers:
+
+```bash
+apptainer build --force rocky10-plasma-base.sif rocky10-plasma-base.def
+apptainer build --force rocky10-plasma.sif rocky10-plasma.def
+```
+
+`rocky10-plasma.def` uses `Bootstrap: localimage` and expects
+`rocky10-plasma-base.sif` in the build directory. To rebuild only the Selkies
+layer after Selkies changes, run `make final`.
+
 ## Publish
 
-Publish the built `.sif` with your site's normal artifact release process. In
-production HPC environments this will commonly be a CVMFS publication workflow,
-not a direct copy into a local `/opt` path.
+Publish the final `rocky10-plasma.sif` with your site's normal artifact release
+process. In production HPC environments this will commonly be a CVMFS
+publication workflow, not a direct copy into a local `/opt` path. The base image
+can also be published if you want a reusable development base, but the OOD app
+uses the final Selkies image.
 
 This repository intentionally does not encode a site-specific CVMFS repository,
 transaction command, or destination path.
 
+The base image is published by GitHub Actions to GHCR as an Apptainer ORAS
+artifact:
+
+```bash
+apptainer pull rocky10-plasma-base.sif oras://ghcr.io/jose-d/selkies-ood-apptainer-rocky10-plasma/rocky10-plasma-base:latest
+```
+
+The workflow builds only `rocky10-plasma-base.sif`. Pushes to `main` publish the
+`latest` tag and the short commit SHA. Tags matching `base-*` publish the exact
+Git tag and the short commit SHA.
+
 ## Runtime Contract
 
-The image includes Selkies under `/opt/selkies-ood`:
+The base image includes:
+
+- Rocky 10 KDE Plasma, KWin Wayland, Xwayland, and Wayland runtime packages
+- development tools used by the Selkies layer
+- `wl-paste` and `wl-copy` from `wl-clipboard`
+- `/opt/selkies-codecs` with portable software H.264 support:
+  - generic shared `libx264`
+  - the matching GStreamer `x264enc` plugin
+
+The final Selkies image builds on the base image and adds Selkies under
+`/opt/selkies-ood`:
 
 - `/opt/selkies-ood/venv/bin/selkies`
 - `/opt/selkies-ood/web`
-- `/opt/selkies/bin/start-selkies`
 
-The image also includes `wl-paste` and `wl-copy` from `wl-clipboard` so
-Selkies clipboard synchronization can read and write the Wayland clipboard
-without host-side binary binds.
-
-The image patches Selkies' Wayland input handler to honor the standard
+The final image patches Selkies' Wayland input handler to honor the standard
 `XKB_DEFAULT_LAYOUT`, `XKB_DEFAULT_VARIANT`, and `XKB_DEFAULT_OPTIONS`
 environment variables instead of forcing a US keymap. This is required for
 non-US layouts such as Czech.
-
-The image also includes a portable software H.264 path under
-`/opt/selkies-codecs`:
-
-- generic shared `libx264`
-- the matching GStreamer `x264enc` plugin
 
 This codec layer is built without `-march=native`; it is intended as a generic
 portable baseline for CVMFS-style distribution, not as a per-node optimized
 build.
 
-The image also includes the nested KDE launcher:
-
-- `/opt/selkies/bin/start-pixelflux-kde`
-
-The KDE launcher expects to be run after Selkies/PixelFlux has already created a
-Wayland socket. An OOD wrapper can therefore start `start-selkies`, wait for the
-PixelFlux socket, and then run the image runscript or `start-pixelflux-kde`.
+The image is a platform image. It provides Selkies, KDE Plasma, KWin Wayland,
+Xwayland, web assets, and codecs, but it does not provide runtime launcher
+scripts or an Apptainer runscript. The Open OnDemand app owns launch
+orchestration and should run its own scripts with `apptainer exec`.
 
 Required environment:
 
@@ -85,7 +102,7 @@ Optional environment:
 - `XKB_DEFAULT_VARIANT` - optional keyboard layout variant.
 - `XKB_DEFAULT_OPTIONS` - optional keyboard layout options.
 
-The runscript starts:
+The app-owned KDE launcher starts:
 
 1. nested `kwin_wayland` on the outer PixelFlux Wayland display
 2. a session bus with `dbus-run-session`
@@ -93,8 +110,9 @@ The runscript starts:
 4. `plasmashell --no-respawn`
 5. `dolphin`
 
-The `start-selkies` helper starts the embedded Selkies server and defaults
-`SELKIES_WEB_ROOT` to `/opt/selkies-ood/web`.
+The app-owned Selkies launcher starts `/opt/selkies-ood/venv/bin/selkies`,
+defaults `SELKIES_WEB_ROOT` to `/opt/selkies-ood/web`, and prepends
+`/opt/selkies-codecs` to the codec-related library paths.
 
 ## Notes
 
